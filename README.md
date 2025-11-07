@@ -1,6 +1,8 @@
 # TSA Group Challenge
 ## Setup Instructions
-eeee
+install uv
+install fastapi
+fastapi dev main.py
 
 ## Technologies
 I've selected this stack for the following reasons:
