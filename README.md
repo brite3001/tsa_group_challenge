@@ -1,8 +1,7 @@
 # TSA Group Challenge
 ## Setup Instructions
 install uv
-install fastapi
-fastapi dev main.py
+uv run python main.py
 
 ## Technologies
 I've selected this stack for the following reasons:
@@ -41,3 +40,7 @@ xxx
 | Input Validation | Add basic input validation | ❌ |
 | Task Filters | Add filters for tasks | ❌ |
 | Database Integration | Integration with any database you prefer | ❌ |
+
+## Future Improvement
+- Error handling not using proper FastAPI HTTP errors. NiceGUI was intercepting errors raised by FastAPI, not enough time to troubleshoot.
+- No auth for the API

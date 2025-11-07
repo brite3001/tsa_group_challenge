@@ -59,6 +59,10 @@ def add_task(task: Task, repo: ToDoRepo = Depends(get_app_repo)):
 def update_task(id: int, change: ChangeTask, repo: ToDoRepo = Depends(get_app_repo)):
     return repo.update(id, change)
 
+@app.put('/task/{id}')
+def delete_task(id: int, repo: ToDoRepo = Depends(get_app_repo)):
+    return repo.delete(id)
+
 
 @app.get('/random/{max}')
 def generate_random_number(max: int):
