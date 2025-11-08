@@ -7,6 +7,7 @@ from nicegui import ui
 
 class Item(Protocol):
     name: str
+    description: str
 
 
 dragged: card | None = None
@@ -47,6 +48,8 @@ class card(ui.card):
         self.item = item
         with self.props('draggable').classes('w-full cursor-pointer bg-grey-1'):
             ui.label(item.name)
+            ui.separator()
+            ui.label(item.description)
         self.on('dragstart', self.handle_dragstart)
 
     def handle_dragstart(self) -> None:
