@@ -21,26 +21,29 @@ xxx
 ### Backend
 | Endpoint | Description | Status
 |--|--|--|
-| GET /tasks | Return list of tasks | ❌ 
-| POST /tasks | Add new task | ❌ |
-| PUT /tasks/:id | Update task details | ❌ |
-| DELETE /tasks/:id | Delete a task | ❌ |
+| GET /tasks | Return list of tasks | ✅ 
+| POST /tasks | Add new task | ✅ |
+| PUT /tasks/:id | Update task details | ✅ |
+| DELETE /tasks/:id | Delete a task | ✅ |
 
 ### Frontend
 | Task | Description | Status
 |--|--|--|
-| Task list | In table, show name/description/status/id | ❌ 
-| Stats Page | tasks completed/tasks with X status | ❌ |
+| Task list | In table, show name/description/status/id | ✅ 
+| Stats Page | tasks completed/tasks with X status | ✅ |
 
 ### Optional
 | Task | Description | Status |
 |--|--|--|
 | Docker | ?? | ❌ |
-| View Implementation | Implement list + kanban | ❌ |
-| Input Validation | Add basic input validation | ❌ |
-| Task Filters | Add filters for tasks | ❌ |
+| View Implementation | Implement list + kanban | ✅ |
+| Input Validation | Add basic input validation | ✅ |
+| Task Filters | Add filters for tasks | ✅ |
 | Database Integration | Integration with any database you prefer | ❌ |
 
 ## Future Improvement
-- Error handling not using proper FastAPI HTTP errors. NiceGUI was intercepting errors raised by FastAPI, not enough time to troubleshoot.
+- Error handling not using proper FastAPI HTTP errors. NiceGUI was intercepting errors raised by FastAPI, not enough time/experience to troubleshoot.
 - No auth for the API
+- Tables don't automatically resize, just simple seaborn tables.
+- The delete button will only work once. To click it again, the page needs to be refreshed.
+- The table changes its size when swapping between tabs, and when items are added/removed sometimes.

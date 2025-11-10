@@ -1,13 +1,12 @@
 from __future__ import annotations
-
 from typing import Callable, Protocol
-
 from nicegui import ui
 
 
 class Item(Protocol):
     name: str
     description: str
+    id: int
 
 
 dragged: card | None = None

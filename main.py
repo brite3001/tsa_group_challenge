@@ -5,7 +5,8 @@ from typing import Dict
 from fastapi import Depends
 from dataclasses import dataclass
 import drag_and_drop as dnd
-from collections import defaultdict
+from collections import defaultdict, Counter
+import seaborn as sns
 
 class Task(BaseModel):
     name: str
@@ -17,92 +18,140 @@ class ChangeTask(BaseModel):
     description: str | None = None
     status: str | None = None
 
-
-### AG-TABLE ###
-def add_row():
-    new_id = max((dx['id'] for dx in aggrid.options['rowData']), default=-1) + 1
-    aggrid.options['rowData'].append({'id': new_id, 'name': 'New name', 'age': None})
-    ui.notify(f'Added row with ID {new_id}')
-
-
-def handle_cell_value_change(e):
-    new_row = e.args['data']
-    ui.notify(f'Updated row to: {e.args["data"]}')
-    aggrid.options['rowData'][:] = [row | new_row if row['id'] ==
-                                    new_row['id'] else row for row in aggrid.options['rowData']]
-
-
-async def delete_selected():
-    selected_id = [row['id'] for row in await aggrid.get_selected_rows()]
-    aggrid.options['rowData'][:] = [row for row in aggrid.options['rowData'] if row['id'] not in selected_id]
-    ui.notify(f'Deleted row with ID {selected_id}')
-#####################
-
 @ui.refreshable
-def to_do_table() -> None:
+def to_do_table():
     repo = get_app_repo()
     rows = [dict(id=k, **v) for k, v in repo.get_all().items()]
-    ui.aggrid({
+    aggrid = ui.aggrid({
         'columnDefs': [
-            {'headerName': 'ID', 'field': 'id', 'maxWidth': 70},
-            {'headerName': 'Name', 'field': 'name'},
-            {'headerName': 'Description', 'field': 'description'},
-            {'headerName': 'Status', 'field': 'status'},
+            {'headerName': 'ID',   'field': 'id', 'editable': False},
+            {'headerName': 'Name', 'field': 'name', 'editable': True},
+            {'headerName': 'Description', 'field': 'description', 'editable': True},
+            {'headerName': 'Status', 'field': 'status', 'editable': True},
         ],
         'rowData': rows,
-        'defaultColDef': {'sortable': True, 'filter': True, 'resizable': True},
+        'defaultColDef': {
+            'sortable': True,
+            'filter': True,
+            'resizable': True,
+            'editable': True,  # global default
+        },
+        'rowSelection': {'mode': 'multiRow'},
+        'stopEditingWhenCellsLoseFocus': True,
     }).style('height:75vh')
 
-### KANBAN ###
+    aggrid.on('cellValueChanged', lambda e: handle_cell_value_change(e, aggrid))
+    return aggrid
+
+def handle_cell_value_change(e, aggrid):
+    repo = get_app_repo()
+
+    new_row = e.args['data']
+    ui.notify(f'Updated row to: {e.args["data"]}')
+    print(e.args["data"])
+    
+    change = ChangeTask(**e.args["data"])
+    repo.update(e.args["data"]['id'], change)
+    
+    aggrid.options['rowData'][:] = [
+        row | new_row if row['id'] == new_row['id'] else row
+        for row in aggrid.options['rowData']
+    ]
+
+
+def add_row():
+    repo = get_app_repo()
+    repo.add_blank_task()
+    ui.notify(f'New task added!')
+
+
+async def delete_selected(aggrid: ui.aggrid) -> None:
+    repo: ToDoRepo = get_app_repo()
+
+    selected = await aggrid.get_selected_rows()
+    if not selected:
+        ui.notify("No rows selected", type="warning")
+        return
+
+    ids_to_delete = [row["id"] for row in selected]
+
+    for rid in ids_to_delete:          
+        repo.delete(rid)
+
+    ui.notify(f"Deleted {len(ids_to_delete)} task(s)")
+
+
+
+### KANBAN HELPER FUNCTIONS ###
 @dataclass
 class ToDo:
     name: str
     description: str
+    id: int
 
 
 def handle_drop(todo: ToDo, location: str):
+    repo = get_app_repo()
     ui.notify(f'"{todo.name}" is now in {location}')
+    change = ChangeTask(status=location)
+    repo.update(todo.id, change)
+
 
 
 def group_by_status(data: dict[int, dict]) -> dict[str, list[dict]]:
     grouped: dict[str, list[dict]] = defaultdict(list)
-    for task in data.values():
-        grouped[task['status']].append(task)
+    for _id, task in data.items():         
+        task_with_id = task | {"id": _id}   
+        grouped[task["status"]].append(task_with_id)
     return dict(grouped)
 ##################
 
 @ui.refreshable
 def kanban() -> None:
     repo = get_app_repo()
+    # print(repo.get_all())
     repo = group_by_status(repo.get_all())
+    # print(repo)
     with ui.row():
         for column in repo:
-            print(column)
+            # print(column)
             with dnd.column(column, on_drop=handle_drop):
                 for item in repo[column]:
-                    print(item)
-                    dnd.card(ToDo(name=item['name'], description=item['description']))
+                    # print(item)
+                    dnd.card(ToDo(name=item['name'], description=item['description'], id=item['id']))
 
-    # with ui.row():
-    #     with dnd.column('Next', on_drop=handle_drop):
-    #         dnd.card(ToDo('Simplify Layouting'))
-    #         dnd.card(ToDo('Provide Deployment'))
-    #     with dnd.column('Doing', on_drop=handle_drop):
-    #         dnd.card(ToDo('Improve Documentation'))
-    #     with dnd.column('Done', on_drop=handle_drop):
-    #         dnd.card(ToDo('Invent NiceGUI'))
-    #         dnd.card(ToDo('Test in own Projects'))
-    #         dnd.card(ToDo('Publish as Open Source'))
-    #         dnd.card(ToDo('Release Native-Mode'))
+@ui.refreshable
+def statistics() -> None:
+    repo = get_app_repo()
+    tasks = repo.get_all()
+    status_counts = Counter(task["status"] for task in tasks.values())
+
+    with ui.tab_panel('Statistics'):
+        ui.label('Content of Statistics')
+
+        with ui.matplotlib(figsize=(6, 4)).figure as fig:
+            ax = fig.gca()
+            sns.barplot(
+                x=list(status_counts.keys()),
+                y=list(status_counts.values()),
+                hue=list(status_counts.keys()),   
+                palette='viridis',
+                legend=False,                     
+                ax=ax
+            )
+            ax.set_title('Task Count by Status')
+            ax.set_xlabel('Status')
+            ax.set_ylabel('Number of Tasks')
 
 # class for dependancy injection. Stops global usage and is setup for async/thread safety
 class ToDoRepo:
-    def __init__(self, table_refresh, kanban_refresh) -> None:
+    def __init__(self, table_refresh, kanban_refresh, statistics_refresh) -> None:
         self._id = 0
         self._todo: Dict[int, dict] = {}
         self._updatable_fields: list[str] = ['name', 'description', 'status']
         self._table_refresh = table_refresh
         self._kanban_refresh = kanban_refresh
+        self._statistics_refresh = statistics_refresh
 
     def get_all(self):
         return self._todo
@@ -112,10 +161,13 @@ class ToDoRepo:
         self._id += 1
         self._table_refresh()
         self._kanban_refresh()
+        self._statistics_refresh()
         return True
 
 
-    def update(self, id: int, changes) -> bool:
+    def update(self, id: int, changes: ChangeTask) -> bool:
+        print('Before change:')
+        print(self._todo[id])
         if id in self._todo:
             for field in self._updatable_fields:
                 if field in changes.model_fields_set:
@@ -123,17 +175,26 @@ class ToDoRepo:
             
             self._table_refresh()
             self._kanban_refresh()
+            self._statistics_refresh()
+
+            print('After change:')
+            print(self._todo[id])
             return True
         else:
             return False
+        
+    def add_blank_task(self) -> None:
+        self.add(Task(name='new task', description='new description', status='unknown'))
+
 
     def delete(self, id: int) -> bool:
         result = self._todo.pop(id, None) is not None
         self._table_refresh()
-        self._kanban_refresh
+        self._kanban_refresh()
+        self._statistics_refresh()
         return result
 
-to_do_repo = ToDoRepo(to_do_table.refresh, kanban.refresh)
+to_do_repo = ToDoRepo(to_do_table.refresh, kanban.refresh, statistics.refresh)
 
 t1 = Task(name='milk the soy beans', description='milk the soy beans in shed one', status='pending')
 t2 = Task(name='Farm alfalfa', description='collect alfalfa from field 2', status='pending')
@@ -150,7 +211,7 @@ def init():
     to_do_repo.add(t4)
     to_do_repo.add(t5)
     to_do_repo.add(t6)
-    # print(to_do_repo.get_all())
+    print(to_do_repo.get_all())
 
 def get_app_repo() -> ToDoRepo:
     return to_do_repo 
@@ -185,8 +246,8 @@ def page():
         ui.button(on_click=lambda: left_drawer.toggle(), icon='menu').props('flat color=white')
 
 
-    with ui.footer(value=False) as footer:
-        ui.label('Footer')
+    # with ui.footer(value=False) as footer:
+    #     ui.label('Footer')
 
     with ui.left_drawer().classes('bg-blue-100') as left_drawer:
         # ui.label('Side menu')
@@ -196,14 +257,14 @@ def page():
                 ui.tab('Kanban View', icon='view_kanban')
                 ui.tab('Statistics', icon='insights')
 
-    with ui.page_sticky(position='bottom-right', x_offset=20, y_offset=20):
-        ui.button(on_click=footer.toggle, icon='contact_support').props('fab')
+    # with ui.page_sticky(position='bottom-right', x_offset=20, y_offset=20):
+    #     ui.button(on_click=footer.toggle, icon='contact_support').props('fab')
 
     with ui.tab_panels(tabs, value='Grid View').classes('w-full'):
         # --- TODO TABLE ---
         with ui.tab_panel('Grid View'):
-            to_do_table()
-            ui.button('Delete selected', on_click=delete_selected)
+            aggrid = to_do_table()
+            ui.button('Delete selected', on_click=lambda: delete_selected(aggrid))
             ui.button('New row', on_click=add_row)
         with ui.tab_panel('Kanban View'):
             ui.label('Content of Kanban View')
@@ -212,19 +273,6 @@ def page():
 
         with ui.tab_panel('Statistics'):
             ###  --- STATISTICS ---
-            ui.label('Content of Statistics')
-            # sample data
-            labels = ['A', 'B', 'C', 'D']
-            sizes  = [15, 30, 45, 10]
-
-            with ui.matplotlib(figsize=(5, 6)).figure as fig:
-                ax = fig.gca()
-                ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90)
-                ax.axis('equal')          
-            
-            with ui.matplotlib(figsize=(5, 6)).figure as fig:
-                ax = fig.gca()
-                ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90)
-                ax.axis('equal')          
+            statistics()         
 
 ui.run(port=8000, show=False)
