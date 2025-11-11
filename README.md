@@ -38,7 +38,7 @@ The code for the table/grid component uses AGGrid, which has filtering provided 
 To get edit/add/delete working for this table, I connected the table to the ToDoRepo with handle_cell_value_change(), add_row(), delete_selected() helpers.
 
 I grabbed most of the kanban code from [this](https://github.com/zauberzeug/nicegui/blob/main/examples/trello_cards/main.py) example, no point reinventing the wheel.
-To connected the kanban view to ToDoRepo via the helper function handle_drop(), which updates the status when the card is moved around. Helper group_by_status() reorganises the dict so items are grouped by status, makes kanban easier to build.
+The kanban updates state via the handle_drop() helper, which updates a tasks status when its dropped into a different column. Helper group_by_status() reorganises the dict so items are grouped by status, makes kanban easier to build.
 
 ## CURL commands for interacting with the backend
 ### Add Task
