@@ -18,31 +18,11 @@ class ChangeTask(BaseModel):
     description: str | None = None
     status: str | None = None
 
-@ui.refreshable
-def to_do_table():
-    repo = get_app_repo()
-    rows = [dict(id=k, **v) for k, v in repo.get_all().items()]
-    aggrid = ui.aggrid({
-        'columnDefs': [
-            {'headerName': 'ID',   'field': 'id', 'editable': False},
-            {'headerName': 'Name', 'field': 'name', 'editable': True},
-            {'headerName': 'Description', 'field': 'description', 'editable': True},
-            {'headerName': 'Status', 'field': 'status', 'editable': True},
-        ],
-        'rowData': rows,
-        'defaultColDef': {
-            'sortable': True,
-            'filter': True,
-            'resizable': True,
-            'editable': True,  # global default
-        },
-        'rowSelection': {'mode': 'multiRow'},
-        'stopEditingWhenCellsLoseFocus': True,
-    }).style('height:75vh')
+########################
+### Helper Functions ###
+########################
 
-    aggrid.on('cellValueChanged', lambda e: handle_cell_value_change(e, aggrid))
-    return aggrid
-
+# helper functions for the table/grid view
 def handle_cell_value_change(e, aggrid):
     repo = get_app_repo()
 
@@ -79,10 +59,9 @@ async def delete_selected(aggrid: ui.aggrid) -> None:
         repo.delete(rid)
 
     ui.notify(f"Deleted {len(ids_to_delete)} task(s)")
+####################
 
-
-
-### KANBAN HELPER FUNCTIONS ###
+# Kanban view helper functions
 @dataclass
 class ToDo:
     name: str
@@ -97,14 +76,41 @@ def handle_drop(todo: ToDo, location: str):
     repo.update(todo.id, change)
 
 
-
 def group_by_status(data: dict[int, dict]) -> dict[str, list[dict]]:
     grouped: dict[str, list[dict]] = defaultdict(list)
     for _id, task in data.items():         
         task_with_id = task | {"id": _id}   
         grouped[task["status"]].append(task_with_id)
     return dict(grouped)
-##################
+
+############################
+### UI Builder Functions ###
+############################
+
+@ui.refreshable
+def to_do_table():
+    repo = get_app_repo()
+    rows = [dict(id=k, **v) for k, v in repo.get_all().items()]
+    aggrid = ui.aggrid({
+        'columnDefs': [
+            {'headerName': 'ID',   'field': 'id', 'editable': False},
+            {'headerName': 'Name', 'field': 'name', 'editable': True},
+            {'headerName': 'Description', 'field': 'description', 'editable': True},
+            {'headerName': 'Status', 'field': 'status', 'editable': True},
+        ],
+        'rowData': rows,
+        'defaultColDef': {
+            'sortable': True,
+            'filter': True,
+            'resizable': True,
+            'editable': True,  
+        },
+        'rowSelection': {'mode': 'multiRow'},
+        'stopEditingWhenCellsLoseFocus': True,
+    }).style('height:75vh')
+
+    aggrid.on('cellValueChanged', lambda e: handle_cell_value_change(e, aggrid))
+    return aggrid
 
 @ui.refreshable
 def kanban() -> None:
@@ -143,7 +149,15 @@ def statistics() -> None:
             ax.set_xlabel('Status')
             ax.set_ylabel('Number of Tasks')
 
-# class for dependancy injection. Stops global usage and is setup for async/thread safety
+
+#################
+### ToDo Repo ###
+#################
+
+# Class for dependancy injection. Stops global usage and is setup for potential future async/thread safety
+# All the state for the webapp lives inside an instance of this class.
+# This class also provides a stable API for the frontend. We can change whatever we like in here (i.e. migrate to a DB)
+# without breaking/needing to change the frontend. We just need to provide the same data in the same format for the frontend.
 class ToDoRepo:
     def __init__(self, table_refresh, kanban_refresh, statistics_refresh) -> None:
         self._id = 0
@@ -163,7 +177,6 @@ class ToDoRepo:
         self._kanban_refresh()
         self._statistics_refresh()
         return True
-
 
     def update(self, id: int, changes: ChangeTask) -> bool:
         print('Before change:')
@@ -186,7 +199,6 @@ class ToDoRepo:
     def add_blank_task(self) -> None:
         self.add(Task(name='new task', description='new description', status='unknown'))
 
-
     def delete(self, id: int) -> bool:
         result = self._todo.pop(id, None) is not None
         self._table_refresh()
@@ -196,6 +208,8 @@ class ToDoRepo:
 
 to_do_repo = ToDoRepo(to_do_table.refresh, kanban.refresh, statistics.refresh)
 
+
+# Seed webapp with sample data
 t1 = Task(name='milk the soy beans', description='milk the soy beans in shed one', status='pending')
 t2 = Task(name='Farm alfalfa', description='collect alfalfa from field 2', status='pending')
 t3 = Task(name='Organise the Marionettes', description='puppets need to be sorted in ascending order', status='pending')
@@ -216,6 +230,12 @@ def init():
 def get_app_repo() -> ToDoRepo:
     return to_do_repo 
 
+
+#######################
+### FastAPI Backend ###
+#######################
+
+# FastAPI backend is kept very simple. Essentially just a wrapper around the ToDoRepo.
 @app.get('/tasks')
 def get_tasks(repo: ToDoRepo = Depends(get_app_repo)):
     return repo.get_all()
@@ -233,22 +253,18 @@ def delete_task(id: int, repo: ToDoRepo = Depends(get_app_repo)):
     return repo.delete(id)
 
 
-
-
-
+########################
+### NiceGUI Frontend ###
+########################
 
 @ui.page('/')
 def page():
 
-
-    
+    # --- Header ---
     with ui.header().classes(replace='row items-center') as header:
         ui.button(on_click=lambda: left_drawer.toggle(), icon='menu').props('flat color=white')
 
-
-    # with ui.footer(value=False) as footer:
-    #     ui.label('Footer')
-
+    # --- Left Menu ---
     with ui.left_drawer().classes('bg-blue-100') as left_drawer:
         # ui.label('Side menu')
         with ui.column():
@@ -257,22 +273,21 @@ def page():
                 ui.tab('Kanban View', icon='view_kanban')
                 ui.tab('Statistics', icon='insights')
 
-    # with ui.page_sticky(position='bottom-right', x_offset=20, y_offset=20):
-    #     ui.button(on_click=footer.toggle, icon='contact_support').props('fab')
-
+    
     with ui.tab_panels(tabs, value='Grid View').classes('w-full'):
-        # --- TODO TABLE ---
+        
+        # --- Table ---
         with ui.tab_panel('Grid View'):
             aggrid = to_do_table()
             ui.button('Delete selected', on_click=lambda: delete_selected(aggrid))
             ui.button('New row', on_click=add_row)
+        
+        # --- Kanban ---
         with ui.tab_panel('Kanban View'):
-            ui.label('Content of Kanban View')
-            # --- KANBAN ---
             kanban()
 
+        # --- Statistics ---
         with ui.tab_panel('Statistics'):
-            ###  --- STATISTICS ---
             statistics()         
 
 ui.run(port=8000, show=False)
